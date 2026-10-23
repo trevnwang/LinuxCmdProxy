@@ -109,7 +109,24 @@ class Handler(BaseHTTPRequestHandler):
         if body:
             self.wfile.write(body)
 
+    def _drain_body(self, limit: int = 65536):
+        """把没消费的请求体读掉，避免客户端收到 RST / 连接复用错乱。"""
+        if getattr(self, "_body_consumed", False):
+            return
+        try:
+            n = int(self.headers.get("Content-Length") or 0)
+        except ValueError:
+            return
+        n = min(n, limit)
+        while n > 0:
+            chunk = self.rfile.read(min(n, 8192))
+            if not chunk:
+                break
+            n -= len(chunk)
+        self._body_consumed = True
+
     def _deny(self, status: int, msg: str, path: str, started: float):
+        self._drain_body()
         body = (msg + "\n").encode()
         self._plain(status, body)
         self._audit(path, status, None, started, len(body))
@@ -149,6 +166,7 @@ class Handler(BaseHTTPRequestHandler):
             payload = json.loads(self.rfile.read(length).decode("utf-8"))
         except Exception:
             return self._deny(400, "body must be JSON", path, started)
+        self._body_consumed = True
         cmd = payload.get("cmd") if isinstance(payload, dict) else None
         if not isinstance(cmd, str) or not cmd:
             return self._deny(400, "missing cmd", path, started)
@@ -172,6 +190,14 @@ class Server(ThreadingHTTPServer):
     def __init__(self, addr, handler, cfg):
         super().__init__(addr, handler)
         self.cfg = cfg
+
+    def handle_error(self, request, client_address):
+        """客户端半路断开是常态（curl -m、超时、Ctrl-C），不要刷 traceback。"""
+        import sys as _sys
+        exc = _sys.exc_info()[1]
+        if isinstance(exc, (BrokenPipeError, ConnectionResetError, TimeoutError)):
+            return
+        super().handle_error(request, client_address)
 
 
 def make_cfg(args):

@@ -95,3 +95,26 @@ Content-Type: text/plain; charset=utf-8
 
 - `cmdapi.py` 0.1.0：双端点、token、IP 白名单、超时、退出码头。
 - 待定：D7 退出码方案（A 头部 / B 不给 / C 映射 500）。
+
+## 安装为 systemd 服务（被控机 B）
+
+```bash
+# 1) token 文件（600）
+printf 'CMDAPI_TOKEN=%s\n' "$(head -c 24 /dev/urandom | base64 | tr -d '/+=')" > ~/.cmdapi.env
+chmod 600 ~/.cmdapi.env
+
+# 2) 装服务（把 User 换成跑它的账号）
+sudo cp systemd/cmdapi.service /etc/systemd/system/cmdapi@.service
+sudo systemctl daemon-reload
+sudo systemctl enable --now cmdapi@$USER
+
+# 3) 查
+systemctl status cmdapi@$USER
+journalctl -u cmdapi@$USER -f     # 审计日志：ip/path/http/exit/bytes/ms
+```
+
+## 自测
+
+```bash
+bash smoke.sh    # 13 项：鉴权、路由、退出码、合并输出、超时、IP 白名单
+```

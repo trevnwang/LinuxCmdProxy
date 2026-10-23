@@ -1,0 +1,19 @@
+[Unit]
+Description=cmdapi — 远程命令执行 API
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=%i
+Group=%i
+WorkingDirectory=%h
+# token 放这个文件里，权限 600：CMDAPI_TOKEN=xxxxxxxx
+EnvironmentFile=%h/.cmdapi.env
+ExecStart=/usr/bin/python3 %h/cmdapi/cmdapi.py --host 0.0.0.0 --port 10086 --allow 100.64.0.0/10 --timeout 300
+Restart=on-failure
+RestartSec=2
+NoNewPrivileges=false
+
+[Install]
+WantedBy=multi-user.target
