@@ -32,6 +32,7 @@ A ── POST /sudocmd + password ─► B  sudo -S 执行（密码走 stdin）
 | D6 | token 传输 | `Authorization: Bearer <token>`；常量时间比较 | 设计 |
 | D7 | 返回体 | stdout+stderr **合并原文**，不加工；退出码放响应头 **`X-Exit-Code`** | **待用户确认（方案 A 暂定）** |
 | D8 | 服务形态 | 单进程双端点（`/cmd`、`/sudocmd`），不拆端口 | 需求第 3 条 |
+| D9 | 目标机环境 | **Ubuntu 22.04+**，Python 3.10+（默认自带），`sudo` 已装；代码只用标准库，语法按 3.10 校验 | 2026-10-23 澄清 |
 
 ## 用法
 
@@ -96,7 +97,15 @@ Content-Type: text/plain; charset=utf-8
 - `cmdapi.py` 0.1.0：双端点、token、IP 白名单、超时、退出码头。
 - 待定：D7 退出码方案（A 头部 / B 不给 / C 映射 500）。
 
-## 安装为 systemd 服务（被控机 B）
+## 一键部署（被控机 B）
+
+```bash
+bash deploy.sh '你的TOKEN' 100.x.x.x 10086 100.64.0.0/10
+```
+
+脚本会：查 Python≥3.10 与 sudo → 写 `~/.cmdapi.env`(600) → 装 `cmdapi@.service` → 启动并验收。
+
+## 手工安装为 systemd 服务（被控机 B）
 
 ```bash
 # 1) token 文件（600）
