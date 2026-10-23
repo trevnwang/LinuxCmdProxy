@@ -228,7 +228,7 @@ def main():
     ap.add_argument("--port", type=int, default=DEFAULT_PORT)
     ap.add_argument("--token", default=os.environ.get("CMDAPI_TOKEN", ""), help="认证 token（也可用 CMDAPI_TOKEN）")
     ap.add_argument("--allow", action="append", default=[],
-                    help="允许的 IP/网段，可重复；默认 127.0.0.1/32 与 ::1/128")
+                    help="允许的 IP/网段，可重复；默认 127.0.0.1/32、::1/128、100.64.0.0/10")
     ap.add_argument("--timeout", type=int, default=DEFAULT_TIMEOUT, help="单条命令超时秒数")
     ap.add_argument("--cwd", default="~", help="执行命令的工作目录，默认家目录")
     ap.add_argument("--version", action="version", version=f"cmdapi {VERSION}")
@@ -237,7 +237,7 @@ def main():
     if not args.token:
         sys.exit("missing --token (or CMDAPI_TOKEN env)")
     if not args.allow:
-        args.allow = ["127.0.0.1/32", "::1/128"]
+        args.allow = ["127.0.0.1/32", "::1/128", "100.64.0.0/10"]
 
     cfg = make_cfg(args)
     srv = Server((args.host, args.port), Handler, cfg)

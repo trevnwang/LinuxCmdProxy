@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
 # 在【被控机 B】上跑：注册成 systemd 服务（开机自启、失败自动重启）
-#   安装：sudo bash deploy.sh 'TOKEN串' [绑定地址] [端口] [允许网段]
-#   例：  sudo bash deploy.sh 'abc123' 100.x.x.x 10086 100.64.0.0/10
+#   安装：sudo bash deploy.sh 'TOKEN串' [绑定地址] [端口] "允许网段1 允许网段2"
+#   例：  sudo bash deploy.sh 'abc123'                       # 默认：0.0.0.0:10086，只放行 100.64.0.0/10 与本机回环
+#         sudo bash deploy.sh 'abc123' 0.0.0.0 10086 "100.64.0.0/10 127.0.0.1/32"
 #   卸载：sudo bash deploy.sh --uninstall
 set -euo pipefail
 
-TOKEN="${1:-}"; HOST="${2:-0.0.0.0}"; PORT="${3:-10086}"; ALLOW="${4:-100.64.0.0/10}"
+TOKEN="${1:-}"; HOST="${2:-0.0.0.0}"; PORT="${3:-10086}"; ALLOW="${4:-100.64.0.0/10 127.0.0.1/32}"
 
 say() { printf '\033[1m%s\033[0m\n' "$*"; }
 need_root() { [ "$(id -u)" = "0" ] || { echo "请用 sudo 跑：sudo bash deploy.sh ..." >&2; exit 2; }; }
@@ -50,6 +51,8 @@ echo "  /opt/cmdapi/cmdapi.py"
 echo "  /etc/cmdapi.env (600)"
 
 say "③ 写 systemd 单元并注册"
+ALLOW_ARGS=""
+for c in $ALLOW; do ALLOW_ARGS="$ALLOW_ARGS --allow $c"; done
 cat > /etc/systemd/system/cmdapi.service <<UNIT
 [Unit]
 Description=cmdapi - remote command execution API
@@ -62,7 +65,7 @@ User=$RUN_USER
 Group=$RUN_USER
 WorkingDirectory=$RUN_HOME
 EnvironmentFile=/etc/cmdapi.env
-ExecStart=/usr/bin/python3 /opt/cmdapi/cmdapi.py --host $HOST --port $PORT --allow $ALLOW --cwd $RUN_HOME
+ExecStart=/usr/bin/python3 /opt/cmdapi/cmdapi.py --host $HOST --port $PORT $ALLOW_ARGS --cwd $RUN_HOME
 Restart=on-failure
 RestartSec=2
 
