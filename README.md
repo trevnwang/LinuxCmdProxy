@@ -97,13 +97,27 @@ Content-Type: text/plain; charset=utf-8
 - `cmdapi.py` 0.1.0：双端点、token、IP 白名单、超时、退出码头。
 - 待定：D7 退出码方案（A 头部 / B 不给 / C 映射 500）。
 
-## 一键部署（被控机 B）
+## 注册成 systemd 服务（被控机 B）—— 正式交付形态
 
 ```bash
-bash deploy.sh '你的TOKEN' 100.x.x.x 10086 100.64.0.0/10
+sudo bash deploy.sh '你的TOKEN' 100.x.x.x 10086 100.64.0.0/10
+# 卸载
+sudo bash deploy.sh --uninstall
 ```
 
-脚本会：查 Python≥3.10 与 sudo → 写 `~/.cmdapi.env`(600) → 装 `cmdapi@.service` → 启动并验收。
+脚本做四件事，全程幂等，可重复跑：
+
+1. 检查 Python ≥ 3.10、`sudo` 存在；
+2. 程序装到 `/opt/cmdapi/cmdapi.py`，token 写 `/etc/cmdapi.env`（600，只走 `EnvironmentFile`，不进 argv）；
+3. 生成 `/etc/systemd/system/cmdapi.service`（`User=$SUDO_USER`、`Restart=on-failure`、`WantedBy=multi-user.target`）；
+4. `daemon-reload` → `enable` → `restart`，并打印 `is-enabled` / `is-active` 与端口监听情况。
+
+服务特性：
+
+- **开机自启**（`systemctl is-enabled cmdapi` → `enabled`）
+- **崩溃自动拉起**（`Restart=on-failure`，`RestartSec=2`）
+- 日志走 journal：`journalctl -u cmdapi -f`
+- 停止：`sudo systemctl stop cmdapi`
 
 ## 手工安装为 systemd 服务（被控机 B）
 
