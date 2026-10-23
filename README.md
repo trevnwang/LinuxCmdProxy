@@ -1,0 +1,97 @@
+# cmdapi — 被控机（B）远程命令执行 API
+
+一台 Linux 机器上跑的单文件服务，主控机（A）通过 HTTP 调它执行命令。
+**零第三方依赖**，只用 Python 3 标准库；装上就能跑。
+
+```
+A ── POST /cmd ────────────────► B  以当前用户执行
+A ── POST /sudocmd + password ─► B  sudo -S 执行（密码走 stdin）
+```
+
+## 需求（用户 2026-10-23 提出，原文要点）
+
+1. 被控 B 两个接口：`/cmd` 普通用户运行，`/sudocmd` sudo 运行且需带 sudo 密码。
+2. **必须有 token 认证**，token 不对调不通。
+3. `/sudocmd` 除 token 外还要 sudo 密码。
+4. **优先一个服务两个端点**（不能做才拆两个端口）。
+5. `--host 0.0.0.0` 语义：支持 `--host x.x.x.x`，例如 `--host 100.x.x.x` 就只有该网段能访问；
+   另有 IP block：不在允许列表的 IP 拒绝。
+6. `--port` 可指定，默认 `10086`。
+7. 返回值 = bash/zsh 给的**纯文字**，不多不少，行为与终端里跑一模一样。
+8. 工程目录在用户家目录，**git 管理**每次需求变更与澄清。
+
+## 决策记录（每次澄清一次 commit）
+
+| # | 决策 | 结论 | 来源 |
+|---|---|---|---|
+| D1 | 被控机 B | 另一台 Linux，不在本机；代码按“自己就是 B”写 | 2026-10-23 澄清 |
+| D2 | `--host` 语义 | 就是**绑定地址**（标准语义）；`100.x.x.x` 只听该网卡 | 2026-10-23 澄清 |
+| D3 | IP 白名单 | 独立一层 `--allow`（支持 CIDR、可重复），默认只放行本机回环 | 需求第 5 条 |
+| D4 | sudo 密码传输 | **JSON body**：`{"cmd": "...", "password": "..."}`（方案 A） | 2026-10-23 选 A |
+| D5 | sudo 密码使用 | `sudo -S -k -p ''`，密码只走 **stdin**，绝不进 argv（防 `ps` 泄露） | 设计 |
+| D6 | token 传输 | `Authorization: Bearer <token>`；常量时间比较 | 设计 |
+| D7 | 返回体 | stdout+stderr **合并原文**，不加工；退出码放响应头 **`X-Exit-Code`** | **待用户确认（方案 A 暂定）** |
+| D8 | 服务形态 | 单进程双端点（`/cmd`、`/sudocmd`），不拆端口 | 需求第 3 条 |
+
+## 用法
+
+```bash
+# 被控机 B
+python3 cmdapi.py --host 100.x.x.x --port 10086 \
+    --token '一串随机串' --allow 100.64.0.0/10
+
+# 主控机 A
+curl -sS -X POST http://1.2.3.4:10086/cmd \
+     -H "Authorization: Bearer 一串随机串" \
+     -d '{"cmd":"uname -a"}' -D-
+
+curl -sS -X POST http://1.2.3.4:10086/sudocmd \
+     -H "Authorization: Bearer 一串随机串" \
+     -d '{"cmd":"systemctl restart nginx","password":"***"}' -D-
+```
+
+响应：
+
+```
+HTTP/1.1 200 OK
+X-Exit-Code: 0
+Content-Type: text/plain; charset=utf-8
+...
+<命令输出原文>
+```
+
+失败码：
+
+| HTTP | 含义 |
+|---|---|
+| 400 | body 不是 JSON / 缺 `cmd` / `/sudocmd` 缺 `password` |
+| 401 | token 缺失或不对 |
+| 403 | 来源 IP 不在 `--allow` 内 |
+| 404 | 路径不是 `/cmd`、`/sudocmd` |
+| 405 | 用了 GET（只收 POST） |
+
+命令超时：进程组整组 SIGKILL，`X-Exit-Code: 124`，输出尾部追加一行 `[cmdapi] timeout after Ns`。
+
+## 参数
+
+| 参数 | 默认 | 说明 |
+|---|---|---|
+| `--host` | `0.0.0.0` | 绑定地址 |
+| `--port` | `10086` | 端口 |
+| `--token` | 环境变量 `CMDAPI_TOKEN` | 必填，没有就拒绝启动 |
+| `--allow` | `127.0.0.1/32`、`::1/128` | 允许的 IP/CIDR，可重复 |
+| `--timeout` | `300` | 单条命令超时（秒） |
+| `--cwd` | `~` | 命令的工作目录 |
+
+## 安全须知（必读）
+
+- 这套东西等价于**把 shell（甚至 root）挂在 HTTP 上**。**只在内网 / Tailscale 上开**，绝不映射公网。
+- 明文 HTTP 会让 token 和 sudo 密码在链路上可见；能上 HTTPS 就上（反代或 stunnel 都行）。
+- `--allow` 与 `--host` 两道一起用：绑 `100.x` 网卡 + 只放行 `100.64.0.0/10`。
+- token 别写进命令行历史：用 `CMDAPI_TOKEN` 环境变量或 systemd `EnvironmentFile`。
+- 审计日志只记 IP / 路径 / 退出码 / 耗时 / 字节数，**不记命令正文和密码**。
+
+## 状态
+
+- `cmdapi.py` 0.1.0：双端点、token、IP 白名单、超时、退出码头。
+- 待定：D7 退出码方案（A 头部 / B 不给 / C 映射 500）。
