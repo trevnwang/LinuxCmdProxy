@@ -199,27 +199,30 @@ class Server(ThreadingHTTPServer):
         super().handle_error(request, client_address)
 
 
-def make_cfg(args):
-    class Cfg:
-        token = args.token
-        timeout = args.timeout
-        cwd = os.path.expanduser(args.cwd)
-        nets = []
-    for item in args.allow:
-        try:
-            Cfg.nets.append(ipaddress.ip_network(item, strict=False))
-        except ValueError:
-            sys.exit(f"bad --allow value: {item}")
+class Config:
+    """运行期配置：token、超时、工作目录、来源 IP 白名单。"""
 
-    def ip_allowed(ip_str: str) -> bool:
+    def __init__(self, token: str, timeout: int, cwd: str, allow: list[str]):
+        self.token = token
+        self.timeout = timeout
+        self.cwd = os.path.expanduser(cwd)
+        self.nets: list[ipaddress._BaseNetwork] = []
+        for item in allow:
+            try:
+                self.nets.append(ipaddress.ip_network(item, strict=False))
+            except ValueError:
+                sys.exit(f"bad --allow value: {item}")
+
+    def ip_allowed(self, ip_str: str) -> bool:
         try:
             ip = ipaddress.ip_address(ip_str)
         except ValueError:
             return False
-        return any(ip in n for n in Cfg.nets)
+        return any(ip in n for n in self.nets)
 
-    Cfg.ip_allowed = staticmethod(ip_allowed)
-    return Cfg
+
+def make_cfg(args) -> Config:
+    return Config(args.token, args.timeout, args.cwd, args.allow)
 
 
 def main():
