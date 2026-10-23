@@ -127,7 +127,7 @@ printf 'CMDAPI_TOKEN=%s\n' "$(head -c 24 /dev/urandom | base64 | tr -d '/+=')" >
 chmod 600 ~/.cmdapi.env
 
 # 2) 装服务（把 User 换成跑它的账号）
-sudo cp systemd/cmdapi.service /etc/systemd/system/cmdapi@.service
+sudo cp systemd/cmdapi.service.example /etc/systemd/system/cmdapi@.service
 sudo systemctl daemon-reload
 sudo systemctl enable --now cmdapi@$USER
 

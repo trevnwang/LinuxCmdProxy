@@ -1,0 +1,20 @@
+# 样例：deploy.sh 会按你的账号/参数自动生成同结构单元，写到
+#   /etc/systemd/system/cmdapi.service
+# 这份只是对照用，别直接 cp（路径、User、网段都要按实际改）。
+[Unit]
+Description=cmdapi - remote command execution API
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=youruser
+Group=youruser
+WorkingDirectory=/home/youruser
+EnvironmentFile=/etc/cmdapi.env
+ExecStart=/usr/bin/python3 /opt/cmdapi/cmdapi.py --host 0.0.0.0 --port 10086 --allow 100.64.0.0/10 --cwd /home/youruser
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target
