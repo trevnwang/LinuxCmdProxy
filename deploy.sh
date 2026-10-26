@@ -24,6 +24,13 @@ fi
 
 need_root
 
+# 第 4 个参数必须是网段列表，不能是选项（--cwd 由家目录自动决定）
+case "$ALLOW" in
+  -*) echo "第 4 个参数应为允许网段（如 \"100.64.0.0/10 127.0.0.1/32\"），收到的是 '$ALLOW'" >&2
+      echo "deploy.sh 没有 $ALLOW 这个选项；执行目录固定用 \$SUDO_USER 的家目录" >&2
+      exit 2 ;;
+esac
+
 # 没给 token 就自动生成一个（与 cmdapi.py 的默认行为一致），并打印出来
 if [ -z "$TOKEN" ]; then
   TOKEN=$(python3 -c 'import secrets;print(secrets.token_urlsafe(32))')
