@@ -32,8 +32,19 @@ if [ -z "$TOKEN" ]; then
 fi
 
 # 服务以调用 sudo 的普通账号运行（sudo 下 $USER 是 root，要用 SUDO_USER）
-RUN_USER="${SUDO_USER:-root}"
+RUN_USER="${SUDO_USER:-}"
+if [ -z "$RUN_USER" ]; then
+  echo "检测不到 SUDO_USER：请不要先 sudo -i 再跑，直接 sudo bash deploy.sh ..." >&2
+  exit 2
+fi
 RUN_HOME=$(getent passwd "$RUN_USER" | cut -d: -f6)
+if [ -z "$RUN_HOME" ] || [ ! -d "$RUN_HOME" ]; then
+  echo "找不到 $RUN_USER 的家目录（getent 返回 '${RUN_HOME}'），中止" >&2
+  exit 2
+fi
+
+# 网段兜底：空值就用默认，绝不生成空的 --allow
+[ -n "$ALLOW" ] || ALLOW="100.64.0.0/10 127.0.0.1/32"
 DIR="$(cd "$(dirname "$0")" && pwd)"
 
 say "① 环境检查"
@@ -59,6 +70,11 @@ echo "  /etc/cmdapi.env (600)"
 say "③ 写 systemd 单元并注册"
 ALLOW_ARGS=""
 for c in $ALLOW; do ALLOW_ARGS="$ALLOW_ARGS --allow $c"; done
+if [ -z "$ALLOW_ARGS" ]; then
+  echo "--allow 解析为空，中止（检查第 4 个参数）" >&2
+  exit 2
+fi
+echo "  ExecStart 参数: --host $HOST --port $PORT$ALLOW_ARGS --cwd $RUN_HOME"
 cat > /etc/systemd/system/cmdapi.service <<UNIT
 [Unit]
 Description=cmdapi - remote command execution API
