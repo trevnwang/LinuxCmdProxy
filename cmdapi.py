@@ -20,6 +20,7 @@ import hmac
 import ipaddress
 import json
 import os
+import secrets
 import signal
 import subprocess
 import sys
@@ -225,11 +226,36 @@ def make_cfg(args) -> Config:
     return Config(args.token, args.timeout, args.cwd, args.allow)
 
 
+def load_or_create_token() -> tuple[str, bool]:
+    """没给 --token 时的默认 token：首次生成并落盘（600），之后沿用同一个。
+
+    返回 (token, 是否本次新生成)。
+    """
+    path = os.path.expanduser("~/.cmdapi/token")
+    try:
+        with open(path, encoding="utf-8") as f:
+            tok = f.read().strip()
+        if tok:
+            return tok, False
+    except FileNotFoundError:
+        pass
+    except OSError as exc:
+        sys.exit(f"读不了 {path}: {exc}")
+
+    tok = secrets.token_urlsafe(32)
+    os.makedirs(os.path.dirname(path), mode=0o700, exist_ok=True)
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w", encoding="utf-8") as f:
+        f.write(tok + "\n")
+    return tok, True
+
+
 def main():
     ap = argparse.ArgumentParser(prog="cmdapi", description="被控机远程命令执行 API")
     ap.add_argument("--host", default="0.0.0.0", help="绑定地址（绑定网卡即限制了来源网段）")
     ap.add_argument("--port", type=int, default=DEFAULT_PORT)
-    ap.add_argument("--token", default=os.environ.get("CMDAPI_TOKEN", ""), help="认证 token（也可用 CMDAPI_TOKEN）")
+    ap.add_argument("--token", default=os.environ.get("CMDAPI_TOKEN", ""),
+                    help="认证 token（也可用 CMDAPI_TOKEN）；不给则用 ~/.cmdapi/token 里的默认值，没有就自动生成")
     ap.add_argument("--allow", action="append", default=[],
                     help="允许的 IP/网段，可重复；默认 127.0.0.1/32、::1/128、100.64.0.0/10")
     ap.add_argument("--timeout", type=int, default=DEFAULT_TIMEOUT, help="单条命令超时秒数")
@@ -237,8 +263,9 @@ def main():
     ap.add_argument("--version", action="version", version=f"cmdapi {VERSION}")
     args = ap.parse_args()
 
+    generated = False
     if not args.token:
-        sys.exit("missing --token (or CMDAPI_TOKEN env)")
+        args.token, generated = load_or_create_token()
     if not args.allow:
         args.allow = ["127.0.0.1/32", "::1/128", "100.64.0.0/10"]
 
@@ -246,6 +273,10 @@ def main():
     srv = Server((args.host, args.port), Handler, cfg)
     print(f"cmdapi {VERSION} listening on {args.host}:{args.port}  "
           f"allow={','.join(args.allow)}  cwd={cfg.cwd}  timeout={cfg.timeout}s", flush=True)
+    if generated:
+        print(f"未指定 --token，已生成默认 token 并保存到 ~/.cmdapi/token (600)：\n  {args.token}", flush=True)
+    elif not os.environ.get("CMDAPI_TOKEN") and "--token" not in sys.argv:
+        print(f"未指定 --token，沿用默认 token（~/.cmdapi/token）：\n  {args.token}", flush=True)
     try:
         srv.serve_forever()
     except KeyboardInterrupt:

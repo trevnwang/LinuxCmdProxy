@@ -22,8 +22,14 @@ if [ "${1:-}" = "--uninstall" ]; then
   exit 0
 fi
 
-[ -n "$TOKEN" ] || { echo "用法: sudo bash deploy.sh 'TOKEN串' [host] [port] [allow-cidr]" >&2; exit 2; }
 need_root
+
+# 没给 token 就自动生成一个（与 cmdapi.py 的默认行为一致），并打印出来
+if [ -z "$TOKEN" ]; then
+  TOKEN=$(python3 -c 'import secrets;print(secrets.token_urlsafe(32))')
+  echo "未指定 token，已自动生成：$TOKEN"
+  echo "（它也写在 /etc/cmdapi.env 里，之后可用 sudo cat /etc/cmdapi.env 查回）"
+fi
 
 # 服务以调用 sudo 的普通账号运行（sudo 下 $USER 是 root，要用 SUDO_USER）
 RUN_USER="${SUDO_USER:-root}"

@@ -79,10 +79,24 @@ Content-Type: text/plain; charset=utf-8
 |---|---|---|
 | `--host` | `0.0.0.0` | 绑定地址 |
 | `--port` | `10086` | 端口 |
-| `--token` | 环境变量 `CMDAPI_TOKEN` | 必填，没有就拒绝启动 |
+| `--token` | 环境变量 `CMDAPI_TOKEN` → 否则 `~/.cmdapi/token` | 不传也不报错：没有就**自动生成**一个（600 存盘，重启沿用），启动时打印 |
 | `--allow` | `127.0.0.1/32`、`::1/128`、`100.64.0.0/10` | 允许的 IP/CIDR，可重复（空格分隔多个） |
 | `--timeout` | `300` | 单条命令超时（秒） |
 | `--cwd` | `~` | 命令的工作目录 |
+
+## 不传 `--token` 会怎样
+
+```bash
+python3 cmdapi.py            # 不报错
+# → 未指定 --token，已生成默认 token 并保存到 ~/.cmdapi/token (600)：
+#      EfSHDRaDiZQOHfv21CuoGETN72idepWpmT3cqBSmy4U
+```
+
+- 首次启动生成 32 字节随机串，写 `~/.cmdapi/token`（目录 700、文件 600）；
+- 之后每次启动**沿用同一个**，不会变；
+- 显式 `--token` 或 `CMDAPI_TOKEN` 优先，默认文件只在两者都没有时才用。
+
+> 生产环境仍建议显式指定 token（`deploy.sh` 会写进 `/etc/cmdapi.env`），默认 token 只是让手工试跑不卡在参数上。
 
 ## `--host` 和 `--allow` 是两件事
 
